@@ -3,6 +3,9 @@ package com.sollace.yaml;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 import java.util.Stack;
 
 import com.google.gson.JsonArray;
@@ -150,9 +153,11 @@ public class YamlReader implements Closeable {
                             case "float" -> new JsonPrimitive(readFloat());
                             case "long" -> new JsonPrimitive(readLong());
                             case "short" -> new JsonPrimitive(readShort());
+                            case "byte" -> new JsonPrimitive(readByte());
                             case "bool", "boolean" -> new JsonPrimitive(readBoolean());
-                            case "array", "arr" -> readArray();
-                            case "map", "obj", "object" -> readObject(false);
+                            case "array", "arr", "seq", "pairs" -> readArray();
+                            case "set" -> readSet();
+                            case "map", "obj", "object", "omap" -> readObject(false);
                             default -> throw new IOException("Type unsupported: " + token.value());
                         };
                     }
@@ -190,11 +195,24 @@ public class YamlReader implements Closeable {
     }
 
     public JsonArray readArray() throws IOException {
+        return readSequence(true);
+    }
+
+    public JsonArray readSet() throws IOException {
+        return readSequence(false);
+    }
+
+    public JsonArray readSequence(boolean allowDuplicates) throws IOException {
         JsonArray array = new JsonArray();
+        String elementPrefix = allowDuplicates ? Constants.ARRAY_ELEMENT_PREFIX : Constants.SET_ELEMENT_PREFIX;
+        Set<JsonElement> values = allowDuplicates ? new HashSet<>() : null;
         do {
             Token token = in.readToken();
-            token.require(SEPARATOR).require(Constants.ARRAY_ELEMENT_PREFIX);
-            array.add(readValue());
+            token.require(SEPARATOR).require(elementPrefix);
+            JsonElement value = readValue();
+            if (values == null || values.add(value)) {
+                array.add(value);
+            }
             token = in.readToken();
             if (token.is(WHITESPACE)) {
                 token = in.readToken();
@@ -219,31 +237,39 @@ public class YamlReader implements Closeable {
     }
 
     public float readFloat() throws IOException {
-        return Float.parseFloat(in.readToken().require(TEXT).value());
+        return TypeCoersion.parseFloat(in.readToken().require(TEXT).value());
     }
 
     public double readDouble() throws IOException {
-        return Double.parseDouble(in.readToken().require(TEXT).value());
+        return TypeCoersion.parseDouble(in.readToken().require(TEXT).value());
     }
 
     public int readInt() throws IOException {
-        return Integer.valueOf(in.readToken().require(TEXT).value());
+        String value = in.readToken().require(TEXT).value().trim().toUpperCase(Locale.ROOT);
+        return Integer.parseInt(value, TypeCoersion.getRadix(value));
     }
 
     public long readLong() throws IOException {
-        return Long.parseLong(in.readToken().require(TEXT).value());
+        String value = in.readToken().require(TEXT).value().trim().toUpperCase(Locale.ROOT);
+        return Long.parseLong(value, TypeCoersion.getRadix(value));
     }
 
     public short readShort() throws IOException {
-        return Short.parseShort(in.readToken().require(TEXT).value());
+        String value = in.readToken().require(TEXT).value().trim().toUpperCase(Locale.ROOT);
+        return Short.parseShort(value, TypeCoersion.getRadix(value));
+    }
+
+    public byte readByte() throws IOException {
+        String value = in.readToken().require(TEXT).value().trim().toUpperCase(Locale.ROOT);
+        return Byte.parseByte(value, TypeCoersion.getRadix(value));
     }
 
     public boolean readBoolean() throws IOException {
         String value = in.readToken().require(TEXT).value();
-        if (Constants.isTrue(value)) {
+        if (TypeCoersion.isTrue(value)) {
             return true;
         }
-        if (Constants.isFalse(value)) {
+        if (TypeCoersion.isFalse(value)) {
             return false;
         }
         throw new IOException(value + " cannot be converted to a boolean");
@@ -288,7 +314,7 @@ public class YamlReader implements Closeable {
         do {
             Token token = in.nextToken();
 
-            if (token.is(END) || token.is(NEWLINE)) {
+            if (token.is(NEWLINE)) {
                 throw new IOException("Unterminated string \"" + buffer.toString() + "\"");
             }
 

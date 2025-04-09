@@ -29,6 +29,7 @@ public class Test {
                             JsonWriter writer = new JsonWriter(buffer);
                             writer.setIndent("  ");
                             writer.setSerializeNulls(true);
+                            writer.setLenient(true);
                             Streams.write(json, writer);
                             System.out.println(buffer.getBuffer().toString());
                         }

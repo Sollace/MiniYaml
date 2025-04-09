@@ -1,6 +1,8 @@
 package com.sollace.yaml;
 
-import org.jetbrains.annotations.Nullable;
+import java.util.Locale;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -14,29 +16,94 @@ public class TypeCoersion {
     static final JsonPrimitive NEGATIVE_INFINITY = new JsonPrimitive(Double.NEGATIVE_INFINITY);
     static final JsonPrimitive POSITIVE_INFINITY = new JsonPrimitive(Double.POSITIVE_INFINITY);
 
-    @Nullable
+    static final Set<String> UNDEFINED_NUMBERS = Set.of(".Inf", "-.Inf", ".NaN");
+
     public static JsonElement valueOf(String s) {
-        if (Constants.isNull(s)) {
+        s = s.toUpperCase(Locale.ROOT).trim();
+
+        if (isNull(s)) {
             return JsonNull.INSTANCE;
         }
 
-        if (Constants.isTrue(s)) {
+        if (isTrue(s)) {
             return TRUE;
         }
-        if (Constants.isFalse(s)) {
+
+        if (isFalse(s)) {
             return FALSE;
         }
-        if (Constants.isNumber(s)) {
-            if (s.equalsIgnoreCase(Constants.NAN)) {
-                return NAN;
+
+        if (isNumber(s)) {
+            int radix = getRadix(s);
+            if (radix != 10) {
+                return new JsonPrimitive(Integer.valueOf(s, radix));
             }
-            if (Constants.isInf(s)) {
+
+            if (isInf(s)) {
                 return s.charAt(0) == '-' ? NEGATIVE_INFINITY : POSITIVE_INFINITY;
             }
-            return new JsonPrimitive(Double.parseDouble(s));
+            return isNan(s) ? NAN : new JsonPrimitive(Double.valueOf(s));
         }
 
         return new JsonPrimitive(s);
     }
 
+    public static int getRadix(String s) {
+        if (isDecimal(s) && s.charAt(s.charAt(0) == '-' ? 1 : 0) == '0') {
+            return 8;
+        }
+        if (isHexadecimal(s)) {
+            return 16;
+        }
+
+        return 10;
+    }
+
+    public static double parseDouble(String s) {
+        s = s.toUpperCase(Locale.ROOT).trim();
+        if (isInf(s)) {
+            return s.charAt(0) == '-' ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+        }
+        return isNan(s) ? Double.NaN : Double.parseDouble(s);
+    }
+
+    public static float parseFloat(String s) {
+        s = s.toUpperCase(Locale.ROOT).trim();
+        if (isInf(s)) {
+            return s.charAt(0) == '-' ? Float.NEGATIVE_INFINITY : Float.POSITIVE_INFINITY;
+        }
+        return isNan(s) ? Float.NaN : Float.parseFloat(s);
+    }
+
+    public static boolean isTrue(String value) {
+        return Pattern.matches("^(true|yes|on|y)$", value.toLowerCase(Locale.ROOT).trim());
+    }
+
+    public static boolean isFalse(String value) {
+        return Pattern.matches("^(false|no|off|n)$", value.toLowerCase(Locale.ROOT).trim());
+    }
+
+    public static boolean isNumber(String value) {
+        return Pattern.matches("^-?(\\.(inf|nan)|[0-9]+([_,][0-9][0-9][0-9])*(\\.[0-9]*)?(e\\+[0-9]+)?)$", value.trim().toLowerCase(Locale.ROOT));
+    }
+
+    public static boolean isDecimal(String value) {
+        return Pattern.matches("^-?[0-9]+$", value.trim());
+    }
+
+    public static boolean isHexadecimal(String value) {
+        return Pattern.matches("^-?0x[0-9ABCDEF]+$", value.toUpperCase(Locale.ROOT).trim());
+    }
+
+    public static boolean isNull(String value) {
+        return Pattern.matches("^(null|~)$", value.toLowerCase(Locale.ROOT).trim());
+    }
+
+    public static boolean isNan(String value) {
+        return Pattern.matches("^-?.nan$", value.toLowerCase(Locale.ROOT).trim());
+    }
+
+    public static boolean isInf(String value) {
+        return Pattern.matches("^-?.inf$", value.toLowerCase(Locale.ROOT).trim());
+    }
 }

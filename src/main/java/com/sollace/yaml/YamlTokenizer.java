@@ -140,8 +140,11 @@ public class YamlTokenizer implements Closeable, Iterable<YamlTokenizer.Token> {
             }
         }
 
-        if (c == '?' && !Character.isWhitespace(peek(0))) {
-            read();
+        if (c == '?') {
+            if (Character.isWhitespace(peek(0))) {
+                read();
+                return new Token(Token.Type.SEPARATOR, Constants.SET_ELEMENT_PREFIX);
+            }
             return new Token(Token.Type.CONTROL_CHARACTER, Constants.KEY_INDICATOR);
         }
 

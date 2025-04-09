@@ -10,8 +10,10 @@ key with space: 1
 
 
 
-not a number: .nan
+not a number: !!float .nan
 
+negative infinity: -.Inf
+infinity: .Inf
 
 testStringMulti:  >
                       I
