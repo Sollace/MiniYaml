@@ -1,0 +1,35 @@
+%YAML 1.2
+testBoolean:          True  #Coment
+testString:           I AM STEVE
+testStringTwoLongKey#: "\"Looooong\""
+# This is a comment. It should not appear in the parsed output
+
+testStringWithNumberSign: "Hello#world!"
+
+key with space: 1
+
+
+
+not a number: .nan
+
+
+testStringMulti:  >
+                      I
+                       AM
+                      STEVE
+nestingTest: !!map
+  testBoolean: True     # Inline comment
+  testString:  I AM STEVE
+  testStringMulti:  |
+               I
+               AM
+               STEVE
+testArray: !!arr
+  - !!str 1 
+  - !!int 2   
+  - 3
+  - yes
+  -
+    - 4
+    - Name: Bob  
+      Age: 43

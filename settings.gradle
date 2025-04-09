@@ -1,0 +1,11 @@
+pluginManagement {
+    repositories {
+        mavenCentral()
+        maven {
+            name = 'Jitpack'
+            url = 'https://jitpack.io'
+        }
+        gradlePluginPortal()
+    }
+}
+rootProject.name = 'Yaml'

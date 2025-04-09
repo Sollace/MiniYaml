@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "kirin-yaml",
+  "version": "${version}",
+  "name": "Yaml",
+  "description": "Provides support for serializing and deserializing yaml files to runtime objects",
+  "authors": [ "Sollace" ],
+  "contact": {
+    "sources": "https://github.com/Sollace/Yaml",
+    "issues": "https://github.com/Sollace/Yaml/issues"
+  },
+  "mixins": [],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": { },
+  "depends": { },
+  "suggests": { },
+  "custom": {
+    "modmenu": {
+      "badges": [ "library" ]
+    }
+  }
+}

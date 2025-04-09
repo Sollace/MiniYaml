@@ -1,0 +1,71 @@
+plugins {
+	id 'java-library'
+	id 'maven-publish'
+	id 'eclipse'
+	id 'idea'
+	id 'org.ajoberstar.reckon' version '0.13.1'
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+	withSourcesJar()
+}
+
+group = project.group
+description = project.displayname
+archivesBaseName = project.name
+
+reckon {
+	scopeFromProp()
+	stageFromProp('beta', 'rc', 'final')
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+  implementation "com.google.code.gson:gson:2.10.1"
+  implementation 'org.jetbrains:annotations-java5:24.0.1'
+}
+
+processResources {
+	inputs.property "version", project.version.toString()
+
+  filesMatching("fabric.mod.json") {
+    expand "version": project.version.toString()
+  }
+
+	from 'LICENSE'
+}
+
+tasks.withType(JavaCompile) {
+	options.encoding = "UTF-8"
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+
+            pom {
+                name = "Yaml"
+                description = "Provides support for serializing and deserializing yaml files to runtime objects"
+                licenses {
+                    license {
+                        name = "MIT Public License"
+                        url = "https://tlo.mit.edu/learn-about-intellectual-property/software-and-open-source-licensing"
+                    }
+                }
+                developers {
+                    developer {
+                        id = "sollace"
+                    }
+                }
+            }
+        }
+    }
+}
