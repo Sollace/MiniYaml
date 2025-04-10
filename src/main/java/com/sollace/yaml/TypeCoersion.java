@@ -19,8 +19,6 @@ public class TypeCoersion {
     static final Set<String> UNDEFINED_NUMBERS = Set.of(".Inf", "-.Inf", ".NaN");
 
     public static JsonElement valueOf(String s) {
-        s = s.toUpperCase(Locale.ROOT).trim();
-
         if (isNull(s)) {
             return JsonNull.INSTANCE;
         }
@@ -36,7 +34,8 @@ public class TypeCoersion {
         if (isNumber(s)) {
             int radix = getRadix(s);
             if (radix != 10) {
-                return new JsonPrimitive(Integer.valueOf(s, radix));
+                s = s.replaceFirst("0[xoXO]", "");
+                return new JsonPrimitive(Integer.valueOf(s.toLowerCase(Locale.ROOT), radix));
             }
 
             if (isInf(s)) {
@@ -49,7 +48,7 @@ public class TypeCoersion {
     }
 
     public static int getRadix(String s) {
-        if (isDecimal(s) && s.charAt(s.charAt(0) == '-' ? 1 : 0) == '0') {
+        if (isOctal(s)) {
             return 8;
         }
         if (isHexadecimal(s)) {
@@ -84,15 +83,21 @@ public class TypeCoersion {
     }
 
     public static boolean isNumber(String value) {
-        return Pattern.matches("^-?(\\.(inf|nan)|[0-9]+([_,][0-9][0-9][0-9])*(\\.[0-9]*)?(e\\+[0-9]+)?)$", value.trim().toLowerCase(Locale.ROOT));
+        return isHexadecimal(value)
+                || isOctal(value)
+                || Pattern.matches("^[+-]?(\\.(inf|nan)|[0-9]+([_,][0-9][0-9][0-9])*(\\.[0-9]*)?(e\\+[0-9]+)?)$", value.trim().toLowerCase(Locale.ROOT));
     }
 
     public static boolean isDecimal(String value) {
-        return Pattern.matches("^-?[0-9]+$", value.trim());
+        return Pattern.matches("^[+-]?[0-9]+$", value.trim());
     }
 
     public static boolean isHexadecimal(String value) {
-        return Pattern.matches("^-?0x[0-9ABCDEF]+$", value.toUpperCase(Locale.ROOT).trim());
+        return Pattern.matches("^[+-]?0x[0-9abcdef]+$", value.toLowerCase(Locale.ROOT).trim());
+    }
+
+    public static boolean isOctal(String value) {
+        return Pattern.matches("^[+-]?0o[0-7]+$", value.toLowerCase(Locale.ROOT).trim());
     }
 
     public static boolean isNull(String value) {
@@ -100,10 +105,10 @@ public class TypeCoersion {
     }
 
     public static boolean isNan(String value) {
-        return Pattern.matches("^-?.nan$", value.toLowerCase(Locale.ROOT).trim());
+        return Pattern.matches("^[+-]?.nan$", value.toLowerCase(Locale.ROOT).trim());
     }
 
     public static boolean isInf(String value) {
-        return Pattern.matches("^-?.inf$", value.toLowerCase(Locale.ROOT).trim());
+        return Pattern.matches("^[+-]?.inf$", value.toLowerCase(Locale.ROOT).trim());
     }
 }

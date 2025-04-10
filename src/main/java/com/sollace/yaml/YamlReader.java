@@ -8,6 +8,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.Stack;
 
+import org.jetbrains.annotations.Nullable;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -61,11 +63,14 @@ public class YamlReader implements Closeable {
             }
             if (token.is(NEWLINE)) {
                 token = in.readToken();
+            }
 
-                if (token.is(TEXT)) {
-                    in.pushBack(token);
-                    continue;
+            if (token.is(TEXT)) {
+                in.pushBack(token);
+                if (!root && !indentation.peek().value().isEmpty()) {
+                    break;
                 }
+                continue;
             }
 
             if (!token.is(WHITESPACE)) {
@@ -139,6 +144,33 @@ public class YamlReader implements Closeable {
                     }
                     if (token.value().equalsIgnoreCase(Constants.TYPE_COERSION_INDICATOR)) {
                         token = in.readToken().require(TEXT);
+
+                        @Nullable
+                        YamlObjectType type = YamlObjectType.of(token.value());
+
+                        if (type == null) {
+                            throw new IOException("Type unsupported: " + token.value());
+                        }
+
+                        if (type.isBlockScoped()) {
+                            token = in.readToken();
+                            if (token.is(WHITESPACE)) {
+                                token = in.readToken();
+                            }
+                            token.require(NEWLINE);
+                            indentation.push(in.readToken().require(WHITESPACE));
+                            try {
+                                return switch (type) {
+                                    case MAP -> readObject(false);
+                                    case SEQUENCE -> readArray();
+                                    case SET -> readSet();
+                                    default -> throw new IOException("Type unsupported: " + token.value());
+                                };
+                            } finally {
+                                indentation.pop();
+                            }
+                        }
+
                         do {
                             next = in.readToken();
                             if (!next.is(WHITESPACE) && !next.is(NEWLINE)) {
@@ -146,18 +178,15 @@ public class YamlReader implements Closeable {
                                 break;
                             }
                         } while (true);
-                        return switch (token.value()) {
-                            case "str", "string" -> new JsonPrimitive(readString());
-                            case "int", "integer" -> new JsonPrimitive(readInt());
-                            case "double" -> new JsonPrimitive(readDouble());
-                            case "float" -> new JsonPrimitive(readFloat());
-                            case "long" -> new JsonPrimitive(readLong());
-                            case "short" -> new JsonPrimitive(readShort());
-                            case "byte" -> new JsonPrimitive(readByte());
-                            case "bool", "boolean" -> new JsonPrimitive(readBoolean());
-                            case "array", "arr", "seq", "pairs" -> readArray();
-                            case "set" -> readSet();
-                            case "map", "obj", "object", "omap" -> readObject(false);
+                        return switch (type) {
+                            case STRING -> new JsonPrimitive(readString());
+                            case INT -> new JsonPrimitive(readInt());
+                            case DOUBLE -> new JsonPrimitive(readDouble());
+                            case FLOAT -> new JsonPrimitive(readFloat());
+                            case LONG -> new JsonPrimitive(readLong());
+                            case SHORT -> new JsonPrimitive(readShort());
+                            case BYTE -> new JsonPrimitive(readByte());
+                            case BOOL -> new JsonPrimitive(readBoolean());
                             default -> throw new IOException("Type unsupported: " + token.value());
                         };
                     }
@@ -214,25 +243,32 @@ public class YamlReader implements Closeable {
                 array.add(value);
             }
             token = in.readToken();
+            if (token.is(TEXT)) {
+                in.pushBack(token);
+                return array;
+            }
+
             if (token.is(WHITESPACE)) {
+                Token next = in.readToken();
+                if (next.is(NEWLINE)) {
+                    token = in.readToken();
+                } else {
+                    in.pushBack(next);
+                }
+            }
+
+            if (token.is(NEWLINE)) {
                 token = in.readToken();
             }
+
             if (token.is(END)) {
                 return array;
             }
-            token.require(NEWLINE);
-            token = in.readToken();
-            switch (token.type()) {
-                case END: return array;
-                case WHITESPACE:
-                    if (!indentation.peek().value().equalsIgnoreCase(token.value())) {
-                        return array;
-                    }
-                    break;
-                default:
-                    in.pushBack(token);
-            }
 
+            if (token.is(WHITESPACE) && !indentation.peek().value().equalsIgnoreCase(token.value())) {
+                in.pushBack(token);
+                return array;
+            }
         } while (true);
     }
 

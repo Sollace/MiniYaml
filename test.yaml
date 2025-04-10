@@ -15,6 +15,9 @@ not a number: !!float .nan
 negative infinity: -.Inf
 infinity: .Inf
 
+hexadecimalnumber: 0xFF
+octalnumber: 0o777
+
 testStringMulti:  >
                       I
                        AM
@@ -28,10 +31,16 @@ nestingTest: !!map
                STEVE
 testArray: !!arr
   - !!str 1 
-  - !!int 2   
+  - !!int 2  
   - 3
   - yes
   -
     - 4
     - Name: Bob  
       Age: 43
+
+testSet: !!set
+  ? one
+  ? two
+
+
