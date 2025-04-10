@@ -416,9 +416,7 @@ public class YamlReader implements Closeable {
                         in.pushBack(token);
                         return buffer.toString();
                     }
-                    if (keepNewlines) {
-                        buffer.append(token.value());
-                    }
+                    buffer.append(keepNewlines ? token.value() : " ");
                     continue;
                 }
             }
