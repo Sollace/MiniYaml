@@ -20,6 +20,9 @@ public interface Constants {
     String KEY_VALUE_PAIR_SEPARATOR = ": ";
     String MULTI_LINE_NEWLINE_PRESERVING_STRING = " |";
     String MULTI_LINE_STRING = " >";
+    String MULTI_LINE_NEWLINE_PRESERVING_STRING_NO_NEWLINE = "|-";
+    String MULTI_LINE_STRING_NO_NEWLINE = " >-";
+
     String TYPE_COERSION_INDICATOR = "!!";
 
     String ARRAY_START = "[";

@@ -4,7 +4,25 @@ testString:           I AM STEVE
 testStringTwoLongKey#: "\"Looooong\""
 # This is a comment. It should not appear in the parsed output
 
+
 testStringWithNumberSign: "Hello#world!"
+
+single quoted: 'in single '' quotes'
+
+many lines in single quotes: 'line 1
+
+            line 3 after blank line\n               
+    line 4
+'
+
+many lines in double quotes: "line 1
+
+line 3 after blank line\n
+line 4
+"
+
+text without quotes: aaaaaah
+aaaaaaahhhh
 
 key with space: 1
 
@@ -25,8 +43,8 @@ testStringMulti:  >
 nestingTest: !!map
   testBoolean: True     # Inline comment
   testString:  I AM STEVE
-  testStringMulti:  |
-               I
+  testStringMulti:  |2
+  I
                AM
                STEVE
 testArray: !!arr
@@ -41,6 +59,7 @@ testArray: !!arr
 
 testSet: !!set
   ? one
+  ? two
   ? two
 
 

@@ -1,4 +1,4 @@
-package com.sollace.yaml;
+package com.sollace.yaml.util;
 
 import java.io.IOException;
 

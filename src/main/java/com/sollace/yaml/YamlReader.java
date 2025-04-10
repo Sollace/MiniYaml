@@ -3,7 +3,10 @@ package com.sollace.yaml;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.Reader;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import java.util.Stack;
@@ -103,7 +106,7 @@ public class YamlReader implements Closeable {
                 case QUOTE: return new JsonPrimitive(readQuotedString(token.value()));
                 case MODE_CHANGE:
                     if (token.value().equalsIgnoreCase(Constants.ARRAY_START)) {
-                        throw new IOException("Inline values are not supported");
+                        throw new IOException("Inline sequences are not supported");
                     }
                     if (token.value().equalsIgnoreCase(Constants.MAP_START)) {
                         throw new IOException("Inline maps are not supported");
@@ -137,10 +140,16 @@ public class YamlReader implements Closeable {
                         return json;
                     }
                     if (token.value().equalsIgnoreCase(Constants.MULTI_LINE_NEWLINE_PRESERVING_STRING)) {
-                        return new JsonPrimitive(readMultiLineString(true));
+                        return new JsonPrimitive(readMultiLineString(true, true));
                     }
                     if (token.value().equalsIgnoreCase(Constants.MULTI_LINE_STRING)) {
-                        return new JsonPrimitive(readMultiLineString(false));
+                        return new JsonPrimitive(readMultiLineString(false, true));
+                    }
+                    if (token.value().equalsIgnoreCase(Constants.MULTI_LINE_NEWLINE_PRESERVING_STRING_NO_NEWLINE)) {
+                        return new JsonPrimitive(readMultiLineString(true, false));
+                    }
+                    if (token.value().equalsIgnoreCase(Constants.MULTI_LINE_STRING_NO_NEWLINE)) {
+                        return new JsonPrimitive(readMultiLineString(false, false));
                     }
                     if (token.value().equalsIgnoreCase(Constants.TYPE_COERSION_INDICATOR)) {
                         token = in.readToken().require(TEXT);
@@ -231,13 +240,12 @@ public class YamlReader implements Closeable {
         return readSequence(false);
     }
 
-    public JsonArray readSequence(boolean allowDuplicates) throws IOException {
+    private JsonArray readSequence(boolean allowDuplicates) throws IOException {
         JsonArray array = new JsonArray();
         String elementPrefix = allowDuplicates ? Constants.ARRAY_ELEMENT_PREFIX : Constants.SET_ELEMENT_PREFIX;
-        Set<JsonElement> values = allowDuplicates ? new HashSet<>() : null;
+        Set<JsonElement> values = allowDuplicates ? null : new HashSet<>();
         do {
-            Token token = in.readToken();
-            token.require(SEPARATOR).require(elementPrefix);
+            Token token = in.readToken().require(SEPARATOR).require(elementPrefix);
             JsonElement value = readValue();
             if (values == null || values.add(value)) {
                 array.add(value);
@@ -248,13 +256,8 @@ public class YamlReader implements Closeable {
                 return array;
             }
 
-            if (token.is(WHITESPACE)) {
-                Token next = in.readToken();
-                if (next.is(NEWLINE)) {
-                    token = in.readToken();
-                } else {
-                    in.pushBack(next);
-                }
+            if (token.is(WHITESPACE) && in.skipToken(NEWLINE).is(NEWLINE)) {
+                token = in.readToken();
             }
 
             if (token.is(NEWLINE)) {
@@ -337,12 +340,8 @@ public class YamlReader implements Closeable {
     }
 
     public String readString() throws IOException {
-        Token token = in.readToken();
-        if (token.type() == QUOTE) {
-            return readQuotedString(token.value());
-        }
-        in.pushBack(token);
-        return readUnquotedString(true, false);
+        Token token = in.skipToken(QUOTE);
+        return token.is(QUOTE) ? readQuotedString(token.value()) : readUnquotedString(true, false);
     }
 
     public String readQuotedString(String quoteChars) throws IOException {
@@ -350,44 +349,124 @@ public class YamlReader implements Closeable {
         do {
             Token token = in.nextToken();
 
-            if (token.is(NEWLINE)) {
+            if (token.is(END)) {
                 throw new IOException("Unterminated string \"" + buffer.toString() + "\"");
             }
 
-            if (token.is(CONTROL_CHARACTER) && token.value().equalsIgnoreCase("\\")) {
-                buffer.append(in.nextToken().value());
-            } else {
-                if (token.is(QUOTE) && token.value().equalsIgnoreCase(quoteChars)) {
-                    return buffer.toString();
+            if (token.is(WHITESPACE)) {
+                Token next = in.nextToken();
+                if (next.is(NEWLINE)) {
+                    token = next;
+                } else {
+                    in.pushBack(next);
                 }
-                buffer.append(token.value());
             }
+
+            if (token.is(NEWLINE)) {
+                Token next = in.nextToken();
+                if (next.is(NEWLINE)) {
+                    buffer.append(token.value());
+                    in.skipToken(WHITESPACE);
+                } else {
+                    if (!next.is(WHITESPACE)) {
+                        in.pushBack(next);
+                    }
+                    buffer.append(" ");
+                }
+
+                continue;
+            }
+
+            if (quoteChars.equalsIgnoreCase(Constants.DOUBLE_QUOTE)) {
+                if (token.is(CONTROL_CHARACTER) && token.value().equalsIgnoreCase("\\")) {
+                    Token next = in.nextToken();
+                    if (next.is(NEWLINE)) {
+                        buffer.append(next.value());
+                    } else {
+                        var codepoint = EscapeSequences.getCodepoint(next.value());
+                        buffer.append(codepoint.character());
+                        if (codepoint.remainder() != null) {
+                            buffer.append(codepoint.remainder());
+                        }
+                    }
+                    continue;
+                }
+            } else if (token.is(QUOTE) && token.value().equalsIgnoreCase(quoteChars)) {
+                Token next = in.nextToken();
+                if (next.is(QUOTE) && next.value().equalsIgnoreCase(quoteChars)) {
+                    buffer.append(next.value());
+                    continue;
+                }
+
+                in.pushBack(next);
+            }
+
+            if (token.is(QUOTE) && token.value().equalsIgnoreCase(quoteChars)) {
+                break;
+            }
+            buffer.append(token.value());
         } while (true);
+
+        return buffer.toString().trim();
     }
 
     public String readUnquotedString(boolean stopOnModeChange, boolean stopOnDelimiter) throws IOException {
         StringBuffer buffer = new StringBuffer();
-        do {
+
+        outer: do {
             Token token = in.nextToken();
 
-            if (token.is(END) || token.is(NEWLINE) || token.isCommentBegin()
+            if (!stopOnDelimiter && token.is(NEWLINE)) {
+                List<Token> forward = new ArrayList<>();
+                try {
+                    do {
+                        Token upcoming = in.nextToken();
+                        forward.add(0, upcoming);
+                        if (upcoming.is(SEPARATOR)) {
+                            break outer;
+                        } else if (upcoming.is(NEWLINE) || upcoming.is(END)) {
+                            break;
+                        }
+                    } while (true);
+                } finally {
+                    while (!forward.isEmpty()) {
+                        in.pushBack(forward.remove(0));
+                    }
+                }
+            }
+
+            if (token.is(END)
+                    || token.isCommentBegin()
+                    || (stopOnDelimiter && token.is(NEWLINE))
                     || (stopOnModeChange && token.is(MODE_CHANGE) && token.value().equalsIgnoreCase(Constants.MAP_END) && token.value().equalsIgnoreCase(Constants.ARRAY_END))
                     || (stopOnDelimiter && token.is(SEPARATOR))) {
                 in.pushBack(token);
-                return buffer.toString().trim();
+                break;
             } else {
                 buffer.append(token.value());
             }
         } while (true);
+
+        return buffer.toString().trim();
     }
 
-    public String readMultiLineString(boolean keepNewlines) throws IOException {
+    public String readMultiLineString(boolean keepNewlines, boolean appendNewline) throws IOException {
         StringBuffer buffer = new StringBuffer();
-        Token token = in.readToken();
-        if (token.is(NEWLINE)) {
+        Token token = in.nextToken();
+        String baseIndent;
+        if (token.is(TEXT) && TypeCoersion.isDecimal(token.value())) {
+            char[] indentText = new char[Math.max(1, Math.min(9, Integer.parseInt(token.value())))];
+            Arrays.fill(indentText, ' ');
+            baseIndent = new String(indentText);
+        } else {
+            in.pushBack(token);
             token = in.readToken();
+            if (token.is(NEWLINE)) {
+                token = in.readToken();
+            }
+            baseIndent = token.require(WHITESPACE).value();
         }
-        String baseIndent = token.require(WHITESPACE).value();
+
         boolean escapeNext = false;
         boolean isOnLineStart = false;
         do {
@@ -399,7 +478,7 @@ public class YamlReader implements Closeable {
                     continue;
                 } else {
                     in.pushBack(token);
-                    return buffer.toString();
+                    break;
                 }
             }
 
@@ -410,11 +489,9 @@ public class YamlReader implements Closeable {
                 }
                 if (token.is(NEWLINE)) {
                     isOnLineStart = true;
-                    Token next = in.nextToken();
-                    in.pushBack(next);
-                    if (!next.is(WHITESPACE)) {
+                    if (!in.peekToken().is(WHITESPACE)) {
                         in.pushBack(token);
-                        return buffer.toString();
+                        break;
                     }
                     buffer.append(keepNewlines ? token.value() : " ");
                     continue;
@@ -423,6 +500,11 @@ public class YamlReader implements Closeable {
 
             buffer.append(token.value());
         } while (true);
+
+        if (appendNewline) {
+            buffer.append('\n');
+        }
+        return buffer.toString().trim();
     }
 
     @Override

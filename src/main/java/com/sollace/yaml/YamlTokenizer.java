@@ -11,61 +11,19 @@ import java.util.List;
 
 import org.jetbrains.annotations.Nullable;
 
+import com.sollace.yaml.util.CharBuf;
+
 public class YamlTokenizer implements Closeable, Iterable<YamlTokenizer.Token> {
-    private final Reader in;
-    private int readerPosition;
-    private char[] buffer;
-    private int bufferFillLength;
+    private CharBuf in;
 
     private final List<Token> bufferedTokens = new ArrayList<>();
 
     public YamlTokenizer(Reader in) {
-        this.in = in;
+        this.in = new CharBuf(in);
     }
 
-    private boolean ready() throws IOException {
-        if (!bufferedTokens.isEmpty()) {
-            return true;
-        }
-
-        if (buffer == null) {
-            return in.ready();
-        }
-        return readerPosition < bufferFillLength;
-    }
-
-    private char peek(int index) throws IOException {
-        if (buffer == null) {
-            if (!in.ready()) {
-                return '\0';
-            }
-
-            buffer = new char[256];
-            bufferFillLength = in.read(buffer);
-        }
-
-        if (readerPosition + index >= bufferFillLength) {
-            if (!in.ready()) {
-                return '\0';
-            }
-
-            if (index == 0) {
-                readerPosition = 0;
-                bufferFillLength = in.read(buffer);
-            } else {
-                char[] newBuf = new char[buffer.length * 2];
-                System.arraycopy(buffer, 0, newBuf, 0, bufferFillLength);
-                bufferFillLength += in.read(newBuf, bufferFillLength, newBuf.length - bufferFillLength);
-                buffer = newBuf;
-            }
-        }
-        return buffer[readerPosition + index];
-    }
-
-    private char read() throws IOException {
-        char c = peek(0);
-        readerPosition++;
-        return c;
+    public boolean ready() throws IOException {
+        return !bufferedTokens.isEmpty() || in.ready();
     }
 
     public void pushBack(Token token) {
@@ -73,7 +31,21 @@ public class YamlTokenizer implements Closeable, Iterable<YamlTokenizer.Token> {
     }
 
     public Token readToken() throws IOException {
-        return skipComments(nextToken());
+        return skipComments(nextSkipEmptyLines());
+    }
+
+    public Token peekToken() throws IOException {
+        Token token = nextToken();
+        pushBack(token);
+        return token;
+    }
+
+    public Token skipToken(Token.Type type) throws IOException {
+        Token token = nextToken();
+        if (!token.is(type)) {
+            pushBack(token);
+        }
+        return token;
     }
 
     public Token nextToken() throws IOException {
@@ -87,18 +59,8 @@ public class YamlTokenizer implements Closeable, Iterable<YamlTokenizer.Token> {
     }
 
     private Token skipComments(Token token) throws IOException {
-        if (token.is(Token.Type.NEWLINE)) {
-            do {
-                Token next = nextToken();
-                if (!next.is(Token.Type.NEWLINE)) {
-                    pushBack(next);
-                    break;
-                }
-            } while (true);
-        }
-
         if (token.is(Token.Type.NEWLINE) || token.is(Token.Type.WHITESPACE)) {
-            Token next = nextToken();
+            Token next = nextSkipEmptyLines();
             if (!next.isCommentBegin()) {
                 pushBack(next);
                 return token;
@@ -108,7 +70,7 @@ public class YamlTokenizer implements Closeable, Iterable<YamlTokenizer.Token> {
 
         if (token.isCommentBegin()) {
             do {
-                token = nextToken();
+                token = nextSkipEmptyLines();
                 if (token.is(Token.Type.END) || token.is(Token.Type.NEWLINE)) {
                     return token;
                 }
@@ -118,31 +80,45 @@ public class YamlTokenizer implements Closeable, Iterable<YamlTokenizer.Token> {
         return token;
     }
 
+    private Token nextSkipEmptyLines() throws IOException {
+        Token token = nextToken();
+        if (token.is(Token.Type.NEWLINE)) {
+            do {
+                Token next = nextToken();
+                if (!next.is(Token.Type.NEWLINE)) {
+                    pushBack(next);
+                    break;
+                }
+            } while (true);
+        }
+        return token;
+    }
+
     private Token doReadToken() throws IOException {
-        char c = read();
+        char c = in.read();
 
         if (c == '\0') {
             return Token.END;
         }
 
         if (c == '\r' || c == '\n') {
-            c = peek(0);
-            if (c == '\r' || c == '\n') {
-                read();
+            char c2 = in.peek(0);
+            if (c != c2 && (c2 == '\r' || c2 == '\n')) {
+                in.read();
             }
             return Token.NEWLINE;
         }
 
         if (c == ':' || c == '-') {
-            char next = peek(0);
+            char next = in.peek(0);
             if (Character.isWhitespace(next) || (c == ':' && (next == '\r' || next == '\n'))) {
                 return new Token(Token.Type.SEPARATOR, Character.toString(c) + " ");
             }
         }
 
         if (c == '?') {
-            if (Character.isWhitespace(peek(0))) {
-                read();
+            if (Character.isWhitespace(in.peek(0))) {
+                in.read();
                 return new Token(Token.Type.SEPARATOR, Constants.SET_ELEMENT_PREFIX);
             }
             return new Token(Token.Type.CONTROL_CHARACTER, Constants.KEY_INDICATOR);
@@ -152,8 +128,8 @@ public class YamlTokenizer implements Closeable, Iterable<YamlTokenizer.Token> {
             return new Token(Token.Type.CONTROL_CHARACTER, Character.toString(c));
         }
 
-        if (c == '!' && peek(0) == '!' && !Character.isWhitespace(peek(1))) {
-            read();
+        if (c == '!' && in.peek(0) == '!' && !Character.isWhitespace(in.peek(1))) {
+            in.read();
             return new Token(Token.Type.CONTROL_CHARACTER, Constants.TYPE_COERSION_INDICATOR);
         }
 
@@ -170,34 +146,40 @@ public class YamlTokenizer implements Closeable, Iterable<YamlTokenizer.Token> {
 
         if (Character.isWhitespace(c)) {
             do {
-                c = peek(0);
+                c = in.peek(0);
                 if (c == '\0' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == '\\' || c == '[' || c == '{') {
                     break;
                 } else if (!Character.isWhitespace(c)) {
                     if (buffer.length() == 1 && (c == '|' || c == '>')) {
-                        buffer.append(read());
+                        buffer.append(in.read());
+
+                        c = in.peek(0);
+                        if (c == '-') {
+                            buffer.append(in.read());
+                        }
+
                         return new Token(Token.Type.CONTROL_CHARACTER, buffer.toString());
                     }
                     break;
                 }
 
-                c = peek(1);
+                c = in.peek(1);
                 if (c == '|' || c == '>') {
                     break;
                 }
 
-                buffer.append(read());
+                buffer.append(in.read());
             } while (true);
 
             return new Token(Token.Type.WHITESPACE, buffer.toString());
         } else {
             do {
-                c = peek(0);
+                c = in.peek(0);
                 if (c == '\0' || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == '\\' || c == ':' || c == ']' || c == '}' || Character.isWhitespace(c)) {
                     break;
                 }
 
-                buffer.append(read());
+                buffer.append(in.read());
             } while (true);
 
             return new Token(Token.Type.TEXT, buffer.toString());
@@ -208,7 +190,6 @@ public class YamlTokenizer implements Closeable, Iterable<YamlTokenizer.Token> {
     public void close() throws IOException {
         in.close();
     }
-
 
     record Token(Type type, @Nullable String value) {
         static final Token END = new Token(Type.END, "");
